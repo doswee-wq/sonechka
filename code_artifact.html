@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>† SONECHKA_OS // LIVE TERMINAL †</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
+
+    :root {
+      --bg-dark: #050406;
+      --bg-panel: #0b080d;
+      --crimson: #ff1e42;
+      --crimson-dim: #5e1120;
+      --crimson-glow: rgba(255, 30, 66, 0.45);
+      --text-main: #e4e2e8;
+      --text-muted: #787082;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      height: 100dvh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Эффект ЭЛТ-монитора, сканлайнов и готической виньетки */
+    .crt-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 40;
+      background:
+        radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.88) 100%),
+        repeating-linear-gradient(
+          0deg,
+          rgba(255, 25, 60, 0.025) 0px,
+          rgba(255, 25, 60, 0.025) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+    }
+
+    /* Кастомный скроллбар */
+    #terminal-log::-webkit-scrollbar {
+      width: 5px;
+    }
+    #terminal-log::-webkit-scrollbar-track {
+      background: #070509;
+    }
+    #terminal-log::-webkit-scrollbar-thumb {
+      background: #42101a;
+      border-radius: 3px;
+    }
+    #terminal-log::-webkit-scrollbar-thumb:hover {
+      background: var(--crimson);
+    }
+
+    /* Мигающий курсор живого человека */
+    .live-cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.1em;
+      background-color: var(--crimson);
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      box-shadow: 0 0 8px var(--crimson);
+      animation: cursorBlink 0.75s infinite;
+    }
+
+    .live-cursor.deleting {
+      background-color: #ff9900;
+      box-shadow: 0 0 10px #ff9900;
+      animation: none;
+    }
+
+    @keyframes cursorBlink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+
+    /* Свечение текста */
+    .glow-red {
+      color: var(--crimson);
+      text-shadow: 0 0 8px var(--crimson-glow);
+    }
+
+    .glow-white {
+      color: #ffffff;
+      text-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+    }
+
+    /* Стили кнопок выбора */
+    .cmd-btn {
+      background: linear-gradient(180deg, #130b10 0%, #0b0609 100%);
+      border: 1px solid #4a121f;
+      color: #e4e2e8;
+      padding: 9px 13px;
+      border-radius: 6px;
+      font-size: 13px;
+      text-align: left;
+      transition: all 0.14s ease;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cmd-btn:hover, .cmd-btn:active {
+      border-color: var(--crimson);
+      background: #240911;
+      color: #fff;
+      box-shadow: 0 0 14px rgba(255, 30, 66, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .cmd-btn.visited {
+      border-color: #241318;
+      color: #776b7d;
+    }
+
+    .cmd-btn.visited::after {
+      content: "✓";
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #ff1e42;
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    .cmd-btn.special {
+      border-color: #ff1e42;
+      background: linear-gradient(90deg, #290810 0%, #17060b 100%);
+      color: #ff8fa0;
+      font-weight: 600;
+    }
+
+    /* Анимация точек "печатает..." */
+    .typing-dots span {
+      animation: dotPulse 1.2s infinite;
+      display: inline-block;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotPulse {
+      0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-2px); }
+    }
+
+    /* Падающие готические сердечки для финала */
+    #heart-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 30;
+    }
+
+    .ascii-box {
+      font-family: 'Courier New', Courier, monospace;
+      line-height: 1.15;
+      white-space: pre;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="crt-overlay"></div>
+  <canvas id="heart-canvas"></canvas>
+
+  <!-- ВЕРХНИЙ ГОТИЧЕСКИЙ HUD -->
+  <header class="relative z-20 border-b border-[#380e18] bg-[#09060b]/95 px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+    <div class="flex items-center gap-2.5">
+      <span class="glow-red font-bold tracking-wider text-sm">† SONECHKA_OS †</span>
+      <span id="lock-badge" class="px-2 py-0.5 rounded bg-[#260810] border border-[#5c1224] text-[#ff4d6a] text-[11px]">
+        [LOCKED]
+      </span>
+      <div class="hidden sm:flex items-center gap-1.5 text-[#8c8294] pl-2 border-l border-[#26141b]">
+        <span>архивы:</span>
+        <span id="progress-counter" class="text-[#ff4d6a] font-bold">0/5</span>
+      </div>
+    </div>
+
+    <!-- Индикатор печати в реальном времени -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <div id="live-status" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#120a10] border border-[#2e121b] text-[11px]">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span id="status-label" class="text-[#b8b0c0]">онлайн</span>
+      </div>
+
+      <button id="speed-btn" onclick="toggleSpeed()" class="px-2.5 py-1 rounded bg-[#140b11] hover:bg-[#24101a] border border-[#3d1320] text-[11px] text-[#d4ced9] transition cursor-pointer">
+        скорость: живая
+      </button>
+
+      <button id="sound-btn" onclick="toggleSound()" class="px-2.5 py-1 rounded bg-[#140b11] hover:bg-[#24101a] border border-[#3d1320] text-[11px] text-[#ff4d6a] transition cursor-pointer">
+        🔊 клава: вкл
+      </button>
+    </div>
+  </header>
+
+  <!-- ОСНОВНОЕ ОКНО ТЕРМИНАЛА -->
+  <main id="terminal-log" class="relative z-20 flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-3 text-sm sm:text-[15px] leading-relaxed select-text">
+    <!-- Сюда в риал-тайме печатаются строки -->
+  </main>
+
+  <!-- ПАНЕЛЬ ИНТЕРАКТИВНЫХ КНОПОК И ЖИВОГО ЧАТА -->
+  <footer class="relative z-20 border-t border-[#380e18] bg-[#08050a]/95 px-3 sm:px-6 py-3 space-y-2.5">
+    <!-- Строка состояния "печатает..." прямо над кнопками -->
+    <div class="flex items-center justify-between text-[11px] text-[#85798c] min-h-[18px]">
+      <div id="PromptHint">выбери ответ или напиши сама:</div>
+      <div id="TypingBanner" class="hidden items-center gap-1 text-[#ff4d6a]">
+        <span>он печатает сообщение</span>
+        <span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+      </div>
+    </div>
+
+    <!-- Кнопки выбора -->
+    <div id="button-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
+    </div>
+
+    <!-- Живая командная строка для ввода своего текста -->
+    <form id="custom-input-form" onsubmit="handleCustomInput(event)" class="flex items-center gap-2 pt-1 border-t border-[#1f0d14]">
+      <span class="glow-red font-bold text-sm shrink-0">сонечка@os:~$</span>
+      <input
+        id="user-cmd-input"
+        type="text"
+        autocomplete="off"
+        placeholder="напиши че угодно сюда (например: да ты фто / смотри не описайся / люблю)..."
+        class="w-full bg-[#11090e] border border-[#38121e] focus:border-[#ff1e42] rounded px-3 py-1.5 text-xs sm:text-sm text-white placeholder-[#594b5e] focus:outline-none transition"
+      />
+      <button
+        type="submit"
+        class="px-3.5 py-1.5 rounded bg-[#ff1e42] hover:bg-[#ff3858] text-black font-bold text-xs shrink-0 transition cursor-pointer"
+      >
+        отправить
+      </button>
+    </form>
+  </footer>
+
+  <script>
+    // =========================================================================
+    // 1. СИНТЕЗАТОР МЕХАНИЧЕСКОЙ КЛАВИАТУРЫ И ЗВУКОВ (WEB AUDIO API)
+    // =========================================================================
+    class MechKeyboardAudio {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx && typeof window !== 'undefined') {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Звук нажатия клавиши (реалистичный щелчок свича)
+      playKey(type = 'char') {
+        if (!this.enabled) return;
+        try {
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          // Короткий импульс щелчка
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          if (type === 'backspace') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(190 + Math.random() * 25, now);
+            osc.frequency.exponentialRampToValueAtTime(75, now + 0.035);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+          } else if (type === 'space') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(140, now);
+            osc.frequency.exponentialRampToValueAtTime(60, now + 0.045);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+          } else {
+            // Обычная буква с небольшим разбросом высоты тона
+            osc.type = 'triangle';
+            const pitch = 320 + Math.random() * 140;
+            osc.frequency.setValueAtTime(pitch, now);
+            osc.frequency.exponentialRampToValueAtTime(95, now + 0.028);
+            gain.gain.setValueAtTime(0.055, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.028);
+          }
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.05);
+        } catch (e) {}
+      }
+
+      // Готический аккорд при открытии или получении купона
+      playChord(notes = [220, 261.63, 329.63, 440]) {
+        if (!this.enabled) return;
+        try {
+          this.init();
+          if (!this.ctx) return;
+          notes.forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            const start = this.ctx.currentTime + i * 0.07;
+            osc.frequency.setValueAtTime(freq, start);
+            gain.gain.setValueAtTime(0.07, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.65);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.65);
+          });
+        } catch (e) {}
+      }
+
+      playError() {
+        this.playChord([155.56, 146.83]);
+      }
+    }
+
+    const kbSound = new MechKeyboardAudio();
+
+    function toggleSound() {
+      kbSound.enabled = !kbSound.enabled;
+      const btn = document.getElementById('sound-btn');
+      btn.textContent = kbSound.enabled ? '🔊 клава: вкл' : '🔇 клава: выкл';
+      btn.className = kbSound.enabled
+        ? 'px-2.5 py-1 rounded bg-[#140b11] hover:bg-[#24101a] border border-[#3d1320] text-[11px] text-[#ff4d6a] transition cursor-pointer'
+        : 'px-2.5 py-1 rounded bg-[#140b11] hover:bg-[#24101a] border border-[#2b1d23] text-[11px] text-[#6e6475] transition cursor-pointer';
+    }
+
+    // =========================================================================
+    // 2. ДВИЖОК ЖИВОЙ ПЕЧАТИ С ПАУЗАМИ И БЭКСПЕЙСОМ В РИАЛ-ТАЙМЕ
+    // =========================================================================
+    const logEl = document.getElementById('terminal-log');
+    const btnContainer = document.getElementById('button-container');
+    const statusDot = document.getElementById('status-dot');
+    const statusLabel = document.getElementById('status-label');
+    const typingBanner = document.getElementById('TypingBanner');
+    const promptHint = document.getElementById('PromptHint');
+
+    let isTyping = false;
+    let fastMode = false;
+    let unlocked = false;
+    const unlockedStories = new Set();
+
+    // Состояние Тамагочи (Шиншилла и Кот)
+    let chinchillaFed = 2;
+    let catMood = 2;
+    let tamagotchiInterval = null;
+
+    function toggleSpeed() {
+      fastMode = !fastMode;
+      const btn = document.getElementById('speed-btn');
+      btn.textContent = fastMode ? 'скорость: турбо ⚡' : 'скорость: живая';
+    }
+
+    function setTypingState(active, customStatus = null) {
+      isTyping = active;
+      if (active) {
+        statusDot.className = 'w-2 h-2 rounded-full bg-[#ff1e42] animate-ping';
+        statusLabel.textContent = customStatus || 'печатает...';
+        statusLabel.className = 'text-[#ff4d6a] font-semibold';
+        typingBanner.classList.remove('hidden');
+        typingBanner.classList.add('flex');
+      } else {
+        statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        statusLabel.textContent = 'онлайн • ждет ответ';
+        statusLabel.className = 'text-[#b8b0c0]';
+        typingBanner.classList.add('hidden');
+        typingBanner.classList.remove('flex');
+      }
+    }
+
+    function scrollToBottom() {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function sleep(ms) {
+      return new Promise(r => setTimeout(r, fastMode ? Math.min(ms, 25) : ms));
+    }
+
+    function updateProgressUI() {
+      const el = document.getElementById('progress-counter');
+      if (el) el.textContent = `${unlockedStories.size}/5`;
+    }
+
+    /**
+     * Печатает текст как живой человек.
+     * Поддерживает теги внутри строки:
+     *   {pause:500} — остановиться и подумать 500мс
+     *   {del:12}    — стереть 12 последних символов по одному клавишей Backspace!
+     */
+    async function humanType(rawScript, options = {}) {
+      const {
+        sender = 'он',
+        role = 'bot', // 'bot' | 'sys' | 'user'
+        prefix = '† ',
+        baseSpeed = 48
+      } = options;
+
+      setTypingState(true, role === 'sys' ? 'система...' : 'печатает...');
+
+      const row = document.createElement('div');
+      row.className = 'leading-relaxed break-words';
+
+      const headerSpan = document.createElement('span');
+      if (role === 'sys') {
+        headerSpan.className = 'glow-red font-bold mr-1.5';
+        headerSpan.textContent = '[SYS] ';
+      } else if (role === 'user') {
+        headerSpan.className = 'text-[#8c7a94] font-semibold mr-1.5';
+        headerSpan.textContent = 'сонечка > ';
+      } else {
+        headerSpan.className = 'text-[#ff4d6a] font-semibold mr-1.5';
+        headerSpan.textContent = prefix;
+      }
+
+      const contentSpan = document.createElement('span');
+      if (role === 'sys') contentSpan.className = 'text-[#ff8da1]';
+      else if (role === 'user') contentSpan.className = 'text-[#a69ab0] italic';
+      else contentSpan.className = 'text-[#eceaf0]';
+
+      const cursorSpan = document.createElement('span');
+      cursorSpan.className = 'live-cursor';
+
+      row.appendChild(headerSpan);
+      row.appendChild(contentSpan);
+      row.appendChild(cursorSpan);
+      logEl.appendChild(row);
+      scrollToBottom();
+
+      // Парсим строку на команды {pause:X}, {del:X} и обычный текст
+      const regex = /\{(pause|del):(\d+)\}/g;
+      const tokens = [];
+      let lastIndex = 0;
+      let match;
+
+      while ((match = regex.exec(rawScript)) !== null) {
+        if (match.index > lastIndex) {
+          tokens.push({ type: 'text', value: rawScript.slice(lastIndex, match.index) });
+        }
+        tokens.push({ type: match[1], count: parseInt(match[2], 10) });
+        lastIndex = regex.lastIndex;
+      }
+      if (lastIndex < rawScript.length) {
+        tokens.push({ type: 'text', value: rawScript.slice(lastIndex) });
+      }
+
+      // Небольшая задержка перед тем как "начать печатать"
+      if (role === 'bot' && !fastMode) {
+        await sleep(260);
+      }
+
+      for (const token of tokens) {
+        if (token.type === 'pause') {
+          await sleep(token.count);
+        } else if (token.type === 'del') {
+          cursorSpan.classList.add('deleting');
+          await sleep(160);
+          for (let d = 0; d < token.count; d++) {
+            contentSpan.textContent = contentSpan.textContent.slice(0, -1);
+            kbSound.playKey('backspace');
+            scrollToBottom();
+            await sleep(fastMode ? 8 : 34 + Math.random() * 25);
+          }
+          cursorSpan.classList.remove('deleting');
+          await sleep(200);
+        } else if (token.type === 'text') {
+          const chars = token.value;
+          for (let i = 0; i < chars.length; i++) {
+            const ch = chars[i];
+            contentSpan.textContent += ch;
+
+            if (ch === ' ') {
+              kbSound.playKey('space');
+            } else {
+              kbSound.playKey('char');
+            }
+            scrollToBottom();
+
+            // Реалистичный ритм человека: быстрее внутри слова, паузы на знаках препинания
+            if (fastMode) {
+              await sleep(6);
+            } else if (role === 'user') {
+              await sleep(14);
+            } else {
+              let delay = baseSpeed + (Math.random() * 45 - 15);
+              if (ch === ',' || ch === '-') delay += 190;
+              if (ch === '.' || ch === '?' || ch === '!') delay += 320;
+              // Иногда микро-залипание пальца как у живого человека
+              if (Math.random() < 0.04) delay += 140;
+              await sleep(Math.max(18, delay));
+            }
+          }
+        }
+      }
+
+      cursorSpan.remove();
+      setTypingState(false);
+      scrollToBottom();
+    }
+
+    // Вывод ASCII-блока или виджета в терминал
+    function appendAsciiBlock(asciiText, extraClass = 'glow-red') {
+      const pre = document.createElement('div');
+      pre.className = `ascii-box text-xs sm:text-sm my-2 p-3 rounded bg-[#0c070d] border border-[#2e1019] ${extraClass}`;
+      pre.textContent = asciiText;
+      logEl.appendChild(pre);
+      scrollToBottom();
+      return pre;
+    }
+
+    function renderButtons(buttonsList, hintText = 'выбери действие или напиши внизу:') {
+      promptHint.textContent = hintText;
+      btnContainer.innerHTML = '';
+      buttonsList.forEach(btn => {
+        const b = document.createElement('button');
+        b.className = 'cmd-btn';
+        if (btn.id && unlockedStories.has(btn.id)) b.classList.add('visited');
+        if (btn.special) b.classList.add('special');
+        b.textContent = btn.label;
+        b.onclick = () => {
+          if (isTyping) return;
+          kbSound.playKey('space');
+          btn.action();
+        };
+        btnContainer.appendChild(b);
+      });
+    }
+
+    // =========================================================================
+    // 3. СЮЖЕТНЫЕ МОДУЛИ И ФЕЙСКОНТРОЛЬ
+    // =========================================================================
+    const GATE_CAT_ASCII = [
+      "   |\\---/|                                      ",
+      "   | ,_, |   † GOTHIC SECURITY GUARD †          ",
+      "    \\_`_/-..----.                               ",
+      " ___/ `   ' ,\"\"+ \\   проверка доступа: сонечка  ",
+      "(__...'   __\\    |`.___.';                      ",
+      "  (_,...'(_,.`__)/'.....+                       "
+    ].join('\n');
+
+    async function startTerminal() {
+      appendAsciiBlock(GATE_CAT_ASCII);
+      await humanType('загрузка закрытого терминала... доступ только для сонечки.', { role: 'sys', baseSpeed: 25 });
+      await humanType(
+        'слышь стой{pause:350} а это точно ты зашла?{pause:400} давай проверим по нашему главному паролю.{pause:300} как ты обычно отвечаешь когда я тебе че то рассказываю?'
+      );
+
+      renderButtons([
+        {
+          label: '> да ты что правда что ли (через Ч)',
+          action: async () => {
+            renderButtons([]);
+            await humanType('да ты что правда что ли', { role: 'user' });
+            kbSound.playError();
+            await humanType(
+              'ну да конечно блять "что"{pause:400}{del:23}не пизди, настоящая сонечка говорит строго через Ф: "да ты фто правда что ли". жми нормально.'
+            );
+            renderGateRetry();
+          }
+        },
+        {
+          label: '> да ты фто правда что ли (через Ф)',
+          special: true,
+          action: () => unlockSuccess('да ты фто правда что ли')
+        },
+        {
+          label: '> смотри не описайся',
+          action: () => unlockSuccess('смотри не описайся')
+        }
+      ], 'пройди фейсконтроль:');
+    }
+
+    function renderGateRetry() {
+      renderButtons([
+        {
+          label: '> да ты фто правда что ли',
+          special: true,
+          action: () => unlockSuccess('да ты фто правда что ли')
+        },
+        {
+          label: '> смотри не описайся',
+          action: () => unlockSuccess('смотри не описайся')
+        }
+      ], 'попытка №2:');
+    }
+
+    async function unlockSuccess(chosenPhrase) {
+      renderButtons([]);
+      await humanType(chosenPhrase, { role: 'user' });
+      unlocked = true;
+      kbSound.playChord([261.63, 329.63, 392.00, 523.25]);
+
+      const badge = document.getElementById('lock-badge');
+      badge.textContent = '[UNLOCKED ♥]';
+      badge.className = 'px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-[11px]';
+
+      await humanType(
+        'воо другое дело{pause:300} узнаю свою сонечку.',
+        { baseSpeed: 42 }
+      );
+      await humanType(
+        'короче сделал для тебя эту штуку потому что сегодня праздник{pause:450}{del:24}просто так без повода. тут все наши истории, твоя шиншилла, котики и купоны. выбирай любую ветку снизу или пиши мне команды в строку.'
+      );
+      showMainMenu();
+    }
+
+    // ГЛАВНОЕ МЕНЮ ТЕРМИНАЛА
+    function showMainMenu() {
+      renderButtons([
+        {
+          id: 'kitay',
+          label: '1. [ китай-город и слезы ]',
+          action: () => branchKitayGorod()
+        },
+        {
+          id: 'lake',
+          label: '2. [ темнота у озера ]',
+          action: () => branchLake()
+        },
+        {
+          id: 'year',
+          label: '3. [ наш год + пауза на лето ]',
+          action: () => branchYear()
+        },
+        {
+          id: 'clothes',
+          label: '4. [ скан гардероба: где мои шмотки ]',
+          action: () => branchClothes()
+        },
+        {
+          id: 'pets',
+          label: '5. [ 🐾 тамагочи: шиншилла и котики ]',
+          action: () => branchPets()
+        },
+        {
+          id: 'coupon',
+          label: '6. [ 🎟 выбить реальный купон ]',
+          action: () => branchCoupons()
+        },
+        {
+          id: 'confession',
+          special: true,
+          label: '† запустить сонечка.exe (главное) †',
+          action: () => branchFinalConfession()
+        }
+      ], 'главное меню терминала (открывай ветки или пиши в чат):');
+    }
+
+    // -------------------------------------------------------------------------
+    // ВЕТКА 1: КИТАЙ-ГОРОД (Интерактивный диалог в несколько шагов)
+    // -------------------------------------------------------------------------
+    async function branchKitayGorod() {
+      renderButtons([]);
+      unlockedStories.add('kitay');
+      updateProgressUI();
+
+      await humanType('открыть архив: китай-город', { role: 'user' });
+      await humanType('загрузка воспоминания: локация [м. китай-город]...', { role: 'sys', baseSpeed: 20 });
+      await humanType(
+        'помню как ты тогда застряла на китай-городе и вообще не могла оттуда уехать.{pause:400} я сначала подумал ну ладно сама как-нибудь выберется{pause:450}{del:34}сразу все бросил и поехал тебя оттуда вытаскивать.'
+      );
+      await humanType(
+        'приезжаю — а ты там стоишь и плачешь.{pause:350} ну че ты тогда ревела глупая?'
+      );
+
+      renderButtons([
+        {
+          label: '> да я растерялась там вообще пиздец был',
+          action: async () => {
+            renderButtons([]);
+            await humanType('да я растерялась там вообще пиздец был', { role: 'user' });
+            await humanType(
+              'да я понял сонечка.{pause:300} зато ты сразу успокоилась когда я приехал.{pause:350} запомни короче: где бы ты ни застряла и че бы ни случилось — просто пиши мне, я всегда приеду и заберу тебя.'
+            );
+            showSubReturnButtons();
+          }
+        },
+        {
+          label: '> да ты фто правда что ли, зато ты приехал!',
+          action: async () => {
+            renderButtons([]);
+            await humanType('да ты фто правда что ли, зато ты приехал!', { role: 'user' });
+            await humanType(
+              'конечно приехал, куда бы я делся.{pause:350} я ж тебя одну в такой хуйне никогда не оставлю. только больше не реви на китай-городе, договорились?'
+            );
+            showSubReturnButtons();
+          }
+        }
+      ], 'ответь ему:');
+    }
+
+    // -------------------------------------------------------------------------
+    // ВЕТКА 2: ТЕМНОТА У ОЗЕРА
+    // -------------------------------------------------------------------------
+    async function branchLake() {
+      renderButtons([]);
+      unlockedStories.add('lake');
+      updateProgressUI();
+
+      await humanType('открыть архив: озеро в темноте', { role: 'user' });
+      appendAsciiBlock(
+        "        *       .       *        ☽        .     *\n" +
+        "   .        *        .       .       *          \n" +
+        " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ \n" +
+        "  ~ ~ ~   ~ ~ ~ ~   [ ТЕМНОТА У ОЗЕРА ]  ~ ~ ~  \n" +
+        " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ",
+        'text-[#98a8f8]'
+      );
+
+      await humanType(
+        'а вот недавно на неделе когда мы после прогулки пошли к озеру.{pause:400} сидели там в темноте и было прям обычно{pause:400}{del:6}очень миленько.'
+      );
+      await humanType(
+        'вообще никакой суеты, никого вокруг, просто мы вдвоем сидим болтаем.{pause:350} мне прям жестко зашел тот вечер. че думаешь, повторим?'
+      );
+
+      renderButtons([
+        {
+          label: '> да, было очень миленько, давай повторим ♥',
+          action: async () => {
+            renderButtons([]);
+            await humanType('да, было очень миленько, давай повторим ♥', { role: 'user' });
+            await humanType(
+              'заметано.{pause:300} только в следующий раз ты еще в мою куртку укутаешься чтоб точно не замерзнуть у воды.'
+            );
+            showSubReturnButtons();
+          }
+        },
+        {
+          label: '> смотри не описайся в темноте у озера',
+          action: async () => {
+            renderButtons([]);
+            await humanType('смотри не описайся в темноте у озера', { role: 'user' });
+            await humanType(
+              'ахах бля я так и знал что ты это скажешь.{pause:300} ладно-ладно, держимся оба.'
+            );
+            showSubReturnButtons();
+          }
+        }
+      ], 'выбери ответ:');
+    }
+
+    // -------------------------------------------------------------------------
+    // ВЕТКА 3: НАШ ГОД И ПАУЗА НА ЛЕТО
+    // -------------------------------------------------------------------------
+    async function branchYear() {
+      renderButtons([]);
+      unlockedStories.add('year');
+      updateProgressUI();
+
+      await humanType('проверить таймлайн: наш год', { role: 'user' });
+
+      const timelineBox = appendAsciiBlock(
+        "АНАЛИЗ ОТНОШЕНИЙ [SONECHKA + Я]:\n" +
+        "├─ СТАРТ ....................... [OK]\n" +
+        "├─ ЛЕТО (РАССТАВАЛИСЬ НАХУЙ) ... [ПЕРЕЖИЛИ]\n" +
+        "├─ СНОВА ВМЕСТЕ ................ [100% АКТИВНО]\n" +
+        "└─ ИТОГО ВМЕСТЕ ................ [1 ГОД ♥]"
+      );
+
+      await humanType(
+        'прикинь мы уже год вместе.{pause:350} да, мы расставались на все лето и думали что все закончилось{pause:450}{del:27}страдали какой-то хуйней отдельно друг от друга.'
+      );
+      await humanType(
+        'но по итогу все равно сошлись обратно.{pause:300} потому что без тебя реально тухло и вообще не то. так что больше никаких летних перерывов, поняла?'
+      );
+
+      showSubReturnButtons();
+    }
+
+    // -------------------------------------------------------------------------
+    // ВЕТКА 4: СКАНЕР УКРАДЕННОГО ГАРДЕРОБА
+    // -------------------------------------------------------------------------
+    async function branchClothes() {
+      renderButtons([]);
+      unlockedStories.add('clothes');
+      updateProgressUI();
+
+      await humanType('запустить сканер моего шкафа', { role: 'user' });
+      await humanType('сканирую домашнюю одежду...', { role: 'sys', baseSpeed: 20 });
+
+      appendAsciiBlock(
+        "╔══════════════════════════════════════════════╗\n" +
+        "║ РЕЗУЛЬТАТ СКАНИРОВАНИЯ МОЕГО ШКАФА:          ║\n" +
+        "║ • футболки оверсайз .... [100% НА СОНЕЧКЕ]   ║\n" +
+        "║ • худи и кофты ......... [ОТЖАТО НАВСЕГДА]   ║\n" +
+        "║ • домашние шмотки ...... [ПЕРЕОДЕЛАСЬ СРАЗУ] ║\n" +
+        "║ • шанс вернуть назад ... [0.00%]             ║\n" +
+        "╚══════════════════════════════════════════════╝"
+      );
+
+      await humanType(
+        'каждый раз когда ты приходишь домой — проходит ровно две минуты и ты уже переоделась в мою одежду.{pause:400} я вообще-то хочу свои вещи обратно{pause:450}{del:32}да ладно похуй, на тебе мои шмотки все равно смотрятся в сто раз милее чем на мне.'
+      );
+
+      renderButtons([
+        {
+          label: '> официально отжать еще одну твою кофту',
+          special: true,
+          action: async () => {
+            renderButtons([]);
+            await humanType('официально отжать еще одну твою кофту', { role: 'user' });
+            kbSound.playChord([329.63, 440, 554.37]);
+            await humanType('лицензия одобрена. забирай любую, все равно ты их уже приватизировала.', { role: 'sys' });
+            showSubReturnButtons();
+          }
+        },
+        {
+          label: '> да ты фто правда что ли, они просто удобные',
+          action: async () => {
+            renderButtons([]);
+            await humanType('да ты фто правда что ли, они просто удобные', { role: 'user' });
+            await humanType('ну да, "просто удобные", рассказывай мне тут. носи на здоровье сонечка ♥');
+            showSubReturnButtons();
+          }
+        }
+      ], 'че скажешь в свое оправдание:');
+    }
+
+    // -------------------------------------------------------------------------
+    // ВЕТКА 5: ЖИВОЙ ТАМАГОЧИ (ШИНШИЛЛА ШАНЕЛЬ И ГОТИЧЕСКИЙ КОТИК)
+    // -------------------------------------------------------------------------
+    async function branchPets() {
+      renderButtons([]);
+      unlockedStories.add('pets');
+      updateProgressUI();
+
+      await humanType('открыть модуль: шиншилла и котики', { role: 'user' });
+
+      // Создаем интерактивный живой виджет прямо в терминале
+      const widget = document.createElement('div');
+      widget.className = 'my-2 p-3.5 rounded-lg bg-[#0e0711] border border-[#521425] space-y-3';
+      widget.innerHTML = `
+        <div class="flex items-center justify-between border-b border-[#2b1019] pb-2 text-xs">
+          <span class="glow-red font-bold">† GOTHIC PETS MONITOR (LIVE) †</span>
+          <span id="pet-status-line" class="text-emerald-400">вайб: люкс</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="p-2.5 rounded bg-[#08040a] border border-[#2a1119]">
+            <div class="text-[11px] text-[#ff8da1] font-bold mb-1">ШИНШИЛЛА ((C)) CHANEL</div>
+            <pre id="chinchilla-art" class="ascii-box text-xs text-[#f0d0d8]"></pre>
+            <div id="chinchilla-bar" class="text-[11px] text-[#a395ab] mt-1"></div>
+          </div>
+          <div class="p-2.5 rounded bg-[#08040a] border border-[#2a1119]">
+            <div class="text-[11px] text-[#ff8da1] font-bold mb-1">КОТ С СЕРДЕЧКОМ</div>
+            <pre id="cat-art" class="ascii-box text-xs text-[#ff4d6a]"></pre>
+            <div id="cat-bar" class="text-[11px] text-[#a395ab] mt-1"></div>
+          </div>
+        </div>
+      `;
+      logEl.appendChild(widget);
+      scrollToBottom();
+
+      let frame = 0;
+      function updatePetVisuals(customMsg = null) {
+        const chinEl = widget.querySelector('#chinchilla-art');
+        const catEl = widget.querySelector('#cat-art');
+        const chinBar = widget.querySelector('#chinchilla-bar');
+        const catBar = widget.querySelector('#cat-bar');
+        const statusLine = widget.querySelector('#pet-status-line');
+
+        if (!chinEl) return;
+
+        const chinFrames = [
+          "   (\\_/)  ✧\n   ( •_•)  [CHANEL]\n  / >((C)<  шуршит",
+          "   (\\_/)  *\n   ( ^_~)  [CHANEL]\n  / >((C)<  на люксе"
+        ];
+        const catFrames = [
+          "   /\\_/\\   \n  ( o.o )  < мяу бля >\n  (  ♥  )  держит сердце",
+          "   /\\_/\\   \n  ( -.- )  < муррр >\n  (  ♥  )  кайфует"
+        ];
+
+        chinEl.textContent = chinFrames[frame % 2];
+        catEl.textContent = catFrames[frame % 2];
+        chinBar.textContent = `сытость: ${'█'.repeat(Math.min(5, chinchillaFed))}${'░'.repeat(Math.max(0, 5 - chinchillaFed))} (${chinchillaFed * 20}%)`;
+        catBar.textContent = `готичность: ${'█'.repeat(Math.min(5, catMood))}${'░'.repeat(Math.max(0, 5 - catMood))} (${catMood * 20}%)`;
+        if (customMsg) statusLine.textContent = customMsg;
+      }
+
+      updatePetVisuals();
+      if (tamagotchiInterval) clearInterval(tamagotchiInterval);
+      tamagotchiInterval = setInterval(() => {
+        frame++;
+        updatePetVisuals();
+      }, 900);
+
+      await humanType(
+        'короче у тебя кота нет, зато есть блатная шиншилла шанель.{pause:300} но так как котика с сердечком ты тоже кидала — я поселил их обоих сюда. можешь потыкать их:'
+      );
+
+      renderButtons([
+        {
+          label: '🌿 покормить шиншиллу шанель',
+          action: async () => {
+            chinchillaFed = Math.min(5, chinchillaFed + 1);
+            kbSound.playChord([440, 554.37, 659.25]);
+            updatePetVisuals('шиншилла жует вкусняшку ♥');
+            await humanType('шиншилла шанель схватила вкусняшку лапками и передает: "да ты фто правда что ли"', { role: 'sys' });
+          }
+        },
+        {
+          label: '🖤 погладить кота с сердечком',
+          action: async () => {
+            catMood = Math.min(5, catMood + 1);
+            kbSound.playChord([329.63, 392, 493.88]);
+            updatePetVisuals('кот громко мурчит ♥');
+            await humanType('кот прищурился, протянул тебе красное сердечко и сказал: смотри не описайся от умиления.', { role: 'sys' });
+          }
+        },
+        {
+          label: '← вернуться к остальным командам',
+          action: () => showMainMenu()
+        }
+      ], 'управление зверями:');
+    }
+
+    // -------------------------------------------------------------------------
+    // ВЕТКА 6: ИНТЕРАКТИВНЫЙ ГЕНЕРАТОР КУПОНОВ (С КОПИРОВАНИЕМ В ТГ)
+    // -------------------------------------------------------------------------
+    async function branchCoupons() {
+      renderButtons([]);
+      await humanType('открыть генератор купонов для сонечки', { role: 'user' });
+      await humanType(
+        'короче выбери че ты прямо сейчас хочешь.{pause:300} терминал выбьет тебе официальный чек, ты его скопируешь одной кнопкой и скинешь мне в лс — а я не смогу отмазаться.'
+      );
+
+      renderButtons([
+        {
+          label: '🎟 купон №1: легально отжать любую мою шмотку',
+          action: () => generateCoupon('ОФИЦИАЛЬНАЯ КОНФИСКАЦИЯ ОДНОЙ МОЕЙ КОФТЫ/ФУТБОЛКИ БЕЗ ВОПРОСОВ')
+        },
+        {
+          label: '🎟 купон №2: вечер вдвоем в темноте у озера',
+          action: () => generateCoupon('ПОВТОРИТЬ МИЛЫЙ ВЕЧЕР ВДВОЕМ У ОЗЕРА + ОБНИМАШКИ')
+        },
+        {
+          label: '🎟 купон №3: экстренная эвакуация (как с китай-города)',
+          action: () => generateCoupon('ПРИЕХАТЬ И ЗАБРАТЬ СОНЕЧКУ ОТКУДА УГОДНО В ЛЮБОЕ ВРЕМЯ')
+        },
+        {
+          label: '🎟 купон №4: 100 поцелуев и обнимашек прямо при встрече',
+          action: () => generateCoupon('БЕЗЛИМИТНЫЕ ОБНИМАШКИ + ПОЦЕЛУИ ПРИ СЛЕДУЮЩЕЙ ВСТРЕЧЕ')
+        },
+        {
+          label: '← назад в меню',
+          action: () => showMainMenu()
+        }
+      ], 'выбери свой купон:');
+    }
+
+    async function generateCoupon(title) {
+      renderButtons([]);
+      kbSound.playChord([261.63, 329.63, 392.00, 523.25]);
+
+      const code = 'SONYA-' + Math.floor(1000 + Math.random() * 9000);
+      const copyString = `† КУПОН ${code} †\nСонечка активировала: ${title}\nСтатус: ОДОБРЕНО БЕЗ ОТМАЗОК ♥`;
+
+      const box = document.createElement('div');
+      box.className = 'my-3 p-4 rounded-lg bg-[#140810] border-2 border-[#ff1e42] text-xs sm:text-sm space-y-2.5 shadow-lg';
+      box.innerHTML = `
+        <div class="glow-red font-bold text-center border-b border-[#471220] pb-1.5">
+          † ОФИЦИАЛЬНЫЙ КУПОН SONECHKA_OS [${code}] †
+        </div>
+        <div class="text-white font-semibold py-1">${title}</div>
+        <div class="text-[11px] text-[#9c8ea6]">владелец: сонечка • срок действия: бессрочно</div>
+        <button id="copy-btn-${code}" class="w-full py-2 rounded bg-[#ff1e42] hover:bg-[#ff3858] text-black font-bold text-xs transition cursor-pointer">
+          📋 скопировать купон и скинуть мне в тг
+        </button>
+      `;
+      logEl.appendChild(box);
+      scrollToBottom();
+
+      const copyBtn = box.querySelector(`#copy-btn-${code}`);
+      copyBtn.onclick = () => {
+        const ta = document.createElement('textarea');
+        ta.value = copyString;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        kbSound.playChord([440, 554.37, 659.25]);
+        copyBtn.textContent = '✓ СКОПИРОВАНО! ТЕПЕРЬ ВСТАВЛЯЙ МНЕ В ЛС ♥';
+        copyBtn.className = 'w-full py-2 rounded bg-emerald-400 text-black font-bold text-xs transition cursor-pointer';
+      };
+
+      await humanType('купон выбит. жми на красную кнопку выше и кидай мне в телегу, отмазываться не буду.');
+      showSubReturnButtons();
+    }
+
+    // -------------------------------------------------------------------------
+    // ФИНАЛ: СОНЕЧКА.EXE (ИСКРЕННЕЕ ПРИЗНАНИЕ С ЖИВЫМ БЭКСПЕЙСОМ И СЕРДЕЧКАМИ)
+    // -------------------------------------------------------------------------
+    async function branchFinalConfession() {
+      renderButtons([]);
+      unlockedStories.add('confession');
+      updateProgressUI();
+
+      await humanType('запустить главный файл: сонечка.exe', { role: 'user' });
+      await humanType('отключение защитных фильтров и сарказма...', { role: 'sys', baseSpeed: 22 });
+
+      await humanType(
+        'короче сонечка слушай сюда.{pause:500} я не умею писать всякие вылизанные ванильные стихи из интернета{pause:400} поэтому напишу как есть своими словами.'
+      );
+
+      // Реалистичный момент, где он сначала пишет с подколом, потом стирает и пишет искренне
+      await humanType(
+        'ты короче ну вроде норм такая девчонка{pause:650}{del:28}пиздец какая милая, красивая и умная.{pause:400} вот реально, с тобой всегда есть о чем поговорить, вообще на любую тему, и мне никогда с тобой не скучно.'
+      );
+
+      await humanType(
+        'мне дико кайфово просто сидеть с тобой в темноте у озера,{pause:300} ехать забирать тебя когда ты плачешь на китай-городе,{pause:300} и смотреть как ты дома ходишь в моих шмотках.'
+      );
+
+      await humanType(
+        'я тебя очень сильно люблю сонечка.{pause:500} только смотри не описайся ♥',
+        { baseSpeed: 55 }
+      );
+
+      kbSound.playChord([261.63, 329.63, 392.00, 493.88, 523.25]);
+      startGothicHeartRain();
+
+      appendAsciiBlock(
+        "      ,d88b.d88b,     ,d88b.d88b,     ,d88b.d88b,\n" +
+        "      88888888888     88888888888     88888888888\n" +
+        "      `Y8888888Y'     `Y8888888Y'     `Y8888888Y'\n" +
+        "        `Y888Y'         `Y888Y'         `Y888Y'  \n" +
+        "          `Y'   SONECHKA  `Y'   FOREVER   `Y'    "
+      );
+
+      renderButtons([
+        {
+          label: '♥ да ты фто правда что ли (и я тебя люблю)',
+          special: true,
+          action: async () => {
+            renderButtons([]);
+            await humanType('да ты фто правда что ли ♥ и я тебя люблю!', { role: 'user' });
+            kbSound.playChord([329.63, 440, 554.37, 659.25]);
+            await humanType('все, иди обниму при встрече. пиши мне в тг ♥');
+            showMainMenu();
+          }
+        },
+        {
+          label: '← вернуться в главное меню',
+          action: () => showMainMenu()
+        }
+      ], 'ответить:');
+    }
+
+    function showSubReturnButtons() {
+      renderButtons([
+        {
+          label: '> да ты фто правда что ли',
+          action: async () => {
+            renderButtons([]);
+            await humanType('да ты фто правда что ли', { role: 'user' });
+            await humanType('правда сонечка, зуб даю.{pause:250} давай выбирай че дальше открываем.');
+            showMainMenu();
+          }
+        },
+        {
+          label: '> смотри не описайся',
+          action: async () => {
+            renderButtons([]);
+            await humanType('смотри не описайся', { role: 'user' });
+            await humanType('держусь из последних сил.{pause:250} погнали дальше по меню.');
+            showMainMenu();
+          }
+        },
+        {
+          label: '← к списку всех архивов',
+          special: true,
+          action: () => showMainMenu()
+        }
+      ], 'ответить или вернуться:');
+    }
+
+    // =========================================================================
+    // 4. ЖИВОЙ ПАРСЕР СВОБОДНОГО ВВОДА (ОНА МОЖЕТ ПИСАТЬ ЧТО УГОДНО В СТРОКУ)
+    // =========================================================================
+    async function handleCustomInput(e) {
+      e.preventDefault();
+      if (isTyping) return;
+
+      const input = document.getElementById('user-cmd-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      const lower = text.toLowerCase();
+      await humanType(text, { role: 'user' });
+
+      if (!unlocked) {
+        if (lower.includes('фто') || lower.includes('описайся')) {
+          await unlockSuccess(text);
+        } else {
+          await humanType('сначала пройди фейсконтроль на входе: напиши "да ты фто правда что ли" через Ф.');
+        }
+        return;
+      }
+
+      if (lower.includes('фто')) {
+        await humanType('да-да именно так через Ф.{pause:300} обожаю когда ты так говоришь.');
+      } else if (lower.includes('что')) {
+        await humanType('опять ты через Ч написала{pause:300}{del:25}не "что", а "фто"! не забывай базу сонечка.');
+      } else if (lower.includes('описайся') || lower.includes('писай')) {
+        await humanType('сама смотри не описайся там за экраном ♥');
+      } else if (lower.includes('люб') || lower.includes('мил') || lower.includes('❤') || lower.includes('♥')) {
+        kbSound.playChord([329.63, 440, 554.37]);
+        startGothicHeartRain();
+        await humanType('и я тебя люблю сонечка.{pause:350} ты у меня самая топовая ♥');
+      } else if (lower.includes('китай')) {
+        await branchKitayGorod();
+        return;
+      } else if (lower.includes('озер')) {
+        await branchLake();
+        return;
+      } else if (lower.includes('шиншил') || lower.includes('кот')) {
+        await branchPets();
+        return;
+      } else if (lower.includes('шмот') || lower.includes('кофт') || lower.includes('одежд')) {
+        await branchClothes();
+        return;
+      } else {
+        await humanType(
+          `слышу тебя сонечка: "${text}"{pause:400} но лучше напиши мне это лично в тг, а тут еще потыкай кнопки которые не открывала ♥`
+        );
+      }
+      showMainMenu();
+    }
+
+    // =========================================================================
+    // 5. ГОТИЧЕСКИЙ ДОЖДЬ ИЗ СЕРДЕЧЕК И СИМВОЛОВ НА CANVAS
+    // =========================================================================
+    function startGothicHeartRain() {
+      const canvas = document.getElementById('heart-canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const particles = Array.from({ length: 36 }, () => ({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * 300,
+        speed: 1.5 + Math.random() * 2.8,
+        symbol: ['♥', '†', '✧', '🖤'][Math.floor(Math.random() * 4)],
+        size: 14 + Math.floor(Math.random() * 14),
+        opacity: 0.5 + Math.random() * 0.5
+      }));
+
+      let frames = 0;
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+          ctx.fillStyle = `rgba(255, 30, 66, ${p.opacity})`;
+          ctx.font = `${p.size}px monospace`;
+          ctx.fillText(p.symbol, p.x, p.y);
+          p.y += p.speed;
+        });
+        frames++;
+        if (frames < 260) {
+          requestAnimationFrame(draw);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+      draw();
+    }
+
+    window.onload = () => {
+      startTerminal();
+    };
+  </script>
+</body>
+</html>
